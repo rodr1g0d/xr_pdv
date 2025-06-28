@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -19,6 +19,7 @@ import {
   Snackbar,
   Alert,
   IconButton,
+  CircularProgress,
 } from '@mui/material';
 import {
   LocalDrink as DrinkIcon,
@@ -30,25 +31,14 @@ import {
 } from '@mui/icons-material';
 import logoXRBurguer from '../xrfundo_branco.png';
 
-const PRODUTOS_MOCK = [
-  { id: 1, nome: 'X-Burguer', preco: 18.90, categoria: 'hamburgueres' },
-  { id: 2, nome: 'X-Bacon', preco: 22.90, categoria: 'hamburgueres' },
-  { id: 3, nome: 'X-Tudo', preco: 25.90, categoria: 'hamburgueres' },
-  { id: 4, nome: 'Coca-Cola 350ml', preco: 6.00, categoria: 'bebidas' },
-  { id: 5, nome: 'Guaraná 350ml', preco: 5.50, categoria: 'bebidas' },
-  { id: 6, nome: 'Batata Frita P', preco: 8.90, categoria: 'acompanhamentos' },
-  { id: 7, nome: 'Batata Frita M', preco: 12.90, categoria: 'acompanhamentos' },
-];
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? '/api' 
+  : 'http://localhost:3001/api';
 
 const PDV = () => {
-  const [produtos] = useState(PRODUTOS_MOCK);
-  const [adicionais, setAdicionais] = useState([
-    { id: 1, nome: 'Ketchup', preco: 0 },
-    { id: 2, nome: 'Mostarda', preco: 0 },
-    { id: 3, nome: 'Queijo Extra', preco: 2.00 },
-    { id: 4, nome: 'Batata Frita', preco: 7.90 },
-  ]);
-
+  const [produtos, setProdutos] = useState([]);
+  const [adicionais, setAdicionais] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [carrinho, setCarrinho] = useState([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState(null);
   const [adicionaisSelecionados, setAdicionaisSelecionados] = useState([]);
@@ -64,8 +54,59 @@ const PDV = () => {
   const [dialogControleOpen, setDialogControleOpen] = useState(false);
   const [itemTemp, setItemTemp] = useState(null);
 
+  // Carregar produtos e adicionais da API
+  useEffect(() => {
+    const carregarDados = async () => {
+      try {
+        setLoading(true);
+        
+        // Carregar produtos
+        const produtosResponse = await fetch(`${API_BASE_URL}/produtos`);
+        if (produtosResponse.ok) {
+          const produtosData = await produtosResponse.json();
+          setProdutos(produtosData);
+        } else {
+          console.error('Erro ao carregar produtos');
+          setSnackbar({
+            open: true,
+            message: 'Erro ao carregar produtos. Verifique a conexão.',
+            severity: 'warning'
+          });
+        }
+        
+        // Carregar adicionais
+        const adicionaisResponse = await fetch(`${API_BASE_URL}/adicionais`);
+        if (adicionaisResponse.ok) {
+          const adicionaisData = await adicionaisResponse.json();
+          setAdicionais(adicionaisData);
+        } else {
+          console.error('Erro ao carregar adicionais');
+          setSnackbar({
+            open: true,
+            message: 'Erro ao carregar adicionais. Verifique a conexão.',
+            severity: 'warning'
+          });
+        }
+        
+      } catch (error) {
+        console.error('Erro na conexão:', error);
+        setSnackbar({
+          open: true,
+          message: 'Erro de conexão com o servidor',
+          severity: 'error'
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    carregarDados();
+  }, []);
+
   const getIconePorCategoria = (categoria) => {
-    switch (categoria) {
+    const categoriaLower = categoria?.toLowerCase();
+    switch (categoriaLower) {
+      case 'hambúrgueres':
       case 'hamburgueres':
         return <BurgerIcon sx={{ fontSize: 32, color: '#e65100' }} />;
       case 'bebidas':
@@ -142,7 +183,7 @@ const PDV = () => {
     setDialogPagerOpen(true);
   };
 
-  const handleConfirmarPedido = () => {
+  const handleConfirmarPedido = async () => {
     if (!numeroPager.trim()) {
       setSnackbar({
         open: true,
@@ -152,23 +193,52 @@ const PDV = () => {
       return;
     }
 
-    const pedidoFinal = {
-      ...pedidoTemp,
-      numeroPager: numeroPager.trim()
-    };
+    try {
+      // Preparar dados do pedido para enviar para a API
+      const pedidoParaAPI = {
+        items: carrinho.map(item => ({
+          produto: item.produto,
+          quantidade: item.quantidade,
+          adicionais: item.adicionais,
+          observacao: item.observacao
+        })),
+        numero_controle: carrinho[0]?.numeroControle || Date.now().toString(),
+        pager: numeroPager.trim()
+      };
 
-    // Aqui você pode enviar o pedido para a impressora/cozinha
-    console.log('Pedido finalizado:', pedidoFinal);
+      const response = await fetch(`${API_BASE_URL}/pedidos`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(pedidoParaAPI)
+      });
 
-    setSnackbar({
-      open: true,
-      message: `Pedido finalizado! Pager #${numeroPager}`,
-      severity: 'success'
-    });
-    setCarrinho([]);
-    setNumeroPager('');
-    setDialogPagerOpen(false);
-    setDialogConfirmacao(false);
+      if (response.ok) {
+        const pedidoCriado = await response.json();
+        console.log('Pedido criado:', pedidoCriado);
+        
+        setSnackbar({
+          open: true,
+          message: `Pedido finalizado! Pager #${numeroPager} - ID: ${pedidoCriado.id}`,
+          severity: 'success'
+        });
+        
+        setCarrinho([]);
+        setNumeroPager('');
+        setDialogPagerOpen(false);
+        setDialogConfirmacao(false);
+      } else {
+        throw new Error('Erro ao criar pedido');
+      }
+    } catch (error) {
+      console.error('Erro ao finalizar pedido:', error);
+      setSnackbar({
+        open: true,
+        message: 'Erro ao finalizar pedido. Tente novamente.',
+        severity: 'error'
+      });
+    }
   };
 
   const handleConfirmarNumeroControle = () => {
@@ -202,286 +272,307 @@ const PDV = () => {
     });
   };
 
+  const removerDoCarrinho = (itemId) => {
+    setCarrinho(carrinho.filter(item => item.id !== itemId));
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Carregando produtos...</Typography>
+      </Box>
+    );
+  }
+
   return (
-    <Box sx={{ flexGrow: 1, p: 3 }}>
-      {/* Cabeçalho com Logo */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, justifyContent: 'center' }}>
+    <Box sx={{ p: 3 }}>
+      {/* Header com logo */}
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
         <img 
           src={logoXRBurguer} 
-          alt="Logo XRBurguer" 
-          style={{ 
-            height: '60px', 
-            marginRight: '15px',
-            objectFit: 'contain'
-          }} 
+          alt="XRBurguer" 
+          style={{ height: '50px', marginRight: '16px' }}
         />
-        <Typography variant="h4" component="h1" sx={{ color: '#0a2842', fontWeight: 'bold' }}>
-          XRBurguer
+        <Typography variant="h4" sx={{ color: '#0a2842', fontWeight: 'bold' }}>
+          PDV - Ponto de Venda
         </Typography>
       </Box>
 
       <Grid container spacing={3}>
-        {/* Lista de Produtos */}
-        <Grid item xs={12} md={4}>
+        {/* Produtos */}
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Produtos
               </Typography>
-              <List>
-                {produtos.map((produto) => (
-                  <ListItem key={produto.id}>
-                    <Button
-                      fullWidth
-                      variant={produtoSelecionado?.id === produto.id ? "contained" : "outlined"}
-                      onClick={() => handleSelecionarProduto(produto)}
-                      startIcon={getIconePorCategoria(produto.categoria)}
-                    >
-                      {produto.nome} - R$ {produto.preco.toFixed(2)}
-                    </Button>
-                  </ListItem>
-                ))}
-              </List>
+              
+              {produtos.length === 0 ? (
+                <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  Nenhum produto cadastrado.
+                  <br />
+                  Acesse "Gerenciar Produtos" para adicionar produtos.
+                </Typography>
+              ) : (
+                <Grid container spacing={2}>
+                  {produtos.map((produto) => (
+                    <Grid item xs={12} sm={6} key={produto.id}>
+                      <Card 
+                        sx={{ 
+                          cursor: 'pointer',
+                          border: produtoSelecionado?.id === produto.id ? '2px solid #0a2842' : '1px solid #ddd',
+                          '&:hover': { boxShadow: 3 }
+                        }}
+                        onClick={() => handleSelecionarProduto(produto)}
+                      >
+                        <CardContent sx={{ textAlign: 'center', p: 2 }}>
+                          {getIconePorCategoria(produto.categoria)}
+                          <Typography variant="h6" sx={{ mt: 1, fontSize: '0.9rem' }}>
+                            {produto.nome}
+                          </Typography>
+                          <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
+                            R$ {produto.preco?.toFixed(2)}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
             </CardContent>
           </Card>
-        </Grid>
 
-        {/* Adicionais e Observações */}
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Quantidade e Adicionais
-              </Typography>
-              {produtoSelecionado && (
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ mr: 2 }}>
-                    Quantidade:
+          {/* Adicionais */}
+          {produtoSelecionado && (
+            <Card sx={{ mt: 2 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Adicionais para: {produtoSelecionado.nome}
+                </Typography>
+                
+                {adicionais.length === 0 ? (
+                  <Typography color="text.secondary">
+                    Nenhum adicional disponível.
                   </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() => setQuantidadeProduto(Math.max(1, quantidadeProduto - 1))}
-                  >
+                ) : (
+                  adicionais.map((adicional) => (
+                    <Box key={adicional.id} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={adicionaisSelecionados.some(a => a.id === adicional.id)}
+                            onChange={() => handleToggleAdicional(adicional)}
+                          />
+                        }
+                        label={`${adicional.nome} - R$ ${adicional.preco?.toFixed(2)}`}
+                        sx={{ flexGrow: 1 }}
+                      />
+                      {adicionaisSelecionados.some(a => a.id === adicional.id) && (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleQuantidadeAdicional(adicional.id, -1)}
+                          >
+                            <RemoveIcon />
+                          </IconButton>
+                          <Typography sx={{ mx: 1 }}>
+                            {quantidadesAdicionais[adicional.id] || 1}
+                          </Typography>
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleQuantidadeAdicional(adicional.id, 1)}
+                          >
+                            <AddIcon />
+                          </IconButton>
+                        </Box>
+                      )}
+                    </Box>
+                  ))
+                )}
+
+                {/* Quantidade do produto */}
+                <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
+                  <Typography sx={{ mr: 2 }}>Quantidade:</Typography>
+                  <IconButton onClick={() => setQuantidadeProduto(Math.max(1, quantidadeProduto - 1))}>
                     <RemoveIcon />
                   </IconButton>
-                  <Typography sx={{ mx: 2 }}>
-                    {quantidadeProduto}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() => setQuantidadeProduto(quantidadeProduto + 1)}
-                  >
+                  <Typography sx={{ mx: 2 }}>{quantidadeProduto}</Typography>
+                  <IconButton onClick={() => setQuantidadeProduto(quantidadeProduto + 1)}>
                     <AddIcon />
                   </IconButton>
                 </Box>
-              )}
-              {adicionais.map((adicional) => (
-                <Box key={adicional.id} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={adicionaisSelecionados.some(a => a.id === adicional.id)}
-                        onChange={() => handleToggleAdicional(adicional)}
-                      />
-                    }
-                    label={`${adicional.nome} (+R$ ${adicional.preco.toFixed(2)})`}
-                  />
-                  {adicionaisSelecionados.some(a => a.id === adicional.id) && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', ml: 2 }}>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleQuantidadeAdicional(adicional.id, -1)}
-                      >
-                        <RemoveIcon />
-                      </IconButton>
-                      <Typography sx={{ mx: 1 }}>
-                        {quantidadesAdicionais[adicional.id] || 1}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleQuantidadeAdicional(adicional.id, 1)}
-                      >
-                        <AddIcon />
-                      </IconButton>
-                    </Box>
-                  )}
-                </Box>
-              ))}
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                margin="normal"
-                label="Observação"
-                value={observacao}
-                onChange={(e) => setObservacao(e.target.value)}
-              />
-              <Button
-                fullWidth
-                variant="contained"
-                color="primary"
-                onClick={handleAdicionarAoCarrinho}
-                disabled={!produtoSelecionado}
-                sx={{ 
-                  mt: 2,
-                  backgroundColor: '#0a2842',
-                  '&:hover': {
-                    backgroundColor: '#0a2842e0'
-                  }
-                }}
-              >
-                Adicionar ao Carrinho
-              </Button>
-            </CardContent>
-          </Card>
+
+                {/* Observações */}
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  label="Observações"
+                  value={observacao}
+                  onChange={(e) => setObservacao(e.target.value)}
+                  sx={{ mt: 2 }}
+                />
+
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handleAdicionarAoCarrinho}
+                  sx={{ mt: 2, backgroundColor: '#0a2842' }}
+                >
+                  Adicionar ao Carrinho
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </Grid>
 
         {/* Carrinho */}
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Carrinho
+                Carrinho ({carrinho.length} {carrinho.length === 1 ? 'item' : 'itens'})
               </Typography>
-              <List>
-                {carrinho.map((item) => (
-                  <React.Fragment key={item.id}>
-                    <ListItem>
-                      <Box>
-                        <Typography variant="body1">
-                          {item.produto.nome} {item.quantidade > 1 && `(${item.quantidade}x)`}
-                          <Typography variant="body2" color="textSecondary">
-                            Nº Controle: {item.numeroControle}
-                          </Typography>
-                          {item.adicionais.length > 0 && (
-                            <Typography variant="body2" color="textSecondary">
-                              + {item.adicionais.map(a => 
-                                `${a.nome} (${a.quantidade}x)`
-                              ).join(', ')}
-                            </Typography>
-                          )}
-                          {item.observacao && (
-                            <Typography variant="body2" color="textSecondary">
-                              Obs: {item.observacao}
-                            </Typography>
-                          )}
-                        </Typography>
-                        <Typography variant="body2">
-                          R$ {item.precoTotal.toFixed(2)}
-                        </Typography>
-                      </Box>
-                    </ListItem>
-                    <Divider />
-                  </React.Fragment>
-                ))}
-              </List>
-              <Typography variant="h6" align="right" sx={{ mt: 2 }}>
-                Total: R$ {carrinho.reduce((total, item) => total + item.precoTotal, 0).toFixed(2)}
-              </Typography>
-              <Button
-                fullWidth
-                variant="contained"
-                color="success"
-                onClick={() => setDialogConfirmacao(true)}
-                disabled={carrinho.length === 0}
-                sx={{ mt: 2 }}
-              >
-                Finalizar Pedido
-              </Button>
+              
+              {carrinho.length === 0 ? (
+                <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  Carrinho vazio
+                </Typography>
+              ) : (
+                <>
+                  <List>
+                    {carrinho.map((item, index) => (
+                      <React.Fragment key={item.id}>
+                        <ListItem sx={{ px: 0 }}>
+                          <Box sx={{ width: '100%' }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                              <Box sx={{ flexGrow: 1 }}>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                                  {item.quantidade}x {item.produto.nome}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Controle: {item.numeroControle}
+                                </Typography>
+                                {item.adicionais.length > 0 && (
+                                  <Typography variant="body2" color="text.secondary">
+                                    Adicionais: {item.adicionais.map(a => `${a.quantidade}x ${a.nome}`).join(', ')}
+                                  </Typography>
+                                )}
+                                {item.observacao && (
+                                  <Typography variant="body2" color="text.secondary">
+                                    Obs: {item.observacao}
+                                  </Typography>
+                                )}
+                              </Box>
+                              <Box sx={{ textAlign: 'right' }}>
+                                <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
+                                  R$ {item.precoTotal.toFixed(2)}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  onClick={() => removerDoCarrinho(item.id)}
+                                >
+                                  Remover
+                                </Button>
+                              </Box>
+                            </Box>
+                          </Box>
+                        </ListItem>
+                        {index < carrinho.length - 1 && <Divider />}
+                      </React.Fragment>
+                    ))}
+                  </List>
+
+                  <Divider sx={{ my: 2 }} />
+                  
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                      Total:
+                    </Typography>
+                    <Typography variant="h5" color="primary" sx={{ fontWeight: 'bold' }}>
+                      R$ {carrinho.reduce((total, item) => total + item.precoTotal, 0).toFixed(2)}
+                    </Typography>
+                  </Box>
+
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={handleFinalizarPedido}
+                    sx={{ backgroundColor: '#0a2842' }}
+                    startIcon={<CheckIcon />}
+                  >
+                    Finalizar Pedido
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Dialog de Confirmação */}
-      <Dialog open={dialogConfirmacao} onClose={() => setDialogConfirmacao(false)}>
-        <DialogTitle>Confirmar Pedido</DialogTitle>
+      {/* Dialog Número de Controle */}
+      <Dialog open={dialogControleOpen} onClose={() => setDialogControleOpen(false)}>
+        <DialogTitle>Número de Controle</DialogTitle>
         <DialogContent>
-          <Typography>Deseja finalizar o pedido?</Typography>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Número de Controle"
+            fullWidth
+            variant="outlined"
+            value={numeroControle}
+            onChange={(e) => setNumeroControle(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleConfirmarNumeroControle();
+              }
+            }}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogConfirmacao(false)}>Cancelar</Button>
-          <Button
-            onClick={handleFinalizarPedido}
-            variant="contained"
-            color="success"
-            startIcon={<CheckIcon />}
-          >
+          <Button onClick={() => setDialogControleOpen(false)}>Cancelar</Button>
+          <Button onClick={handleConfirmarNumeroControle} variant="contained">
             Confirmar
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog do Pager */}
+      {/* Dialog Pager */}
       <Dialog open={dialogPagerOpen} onClose={() => setDialogPagerOpen(false)}>
         <DialogTitle>Número do Pager</DialogTitle>
         <DialogContent>
-          <Typography gutterBottom>
-            Total do pedido: R$ {pedidoTemp?.total.toFixed(2)}
-          </Typography>
           <TextField
             autoFocus
             margin="dense"
             label="Número do Pager"
-            type="number"
             fullWidth
+            variant="outlined"
             value={numeroPager}
             onChange={(e) => setNumeroPager(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleConfirmarPedido();
+              }
+            }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogPagerOpen(false)}>Cancelar</Button>
-          <Button
-            onClick={handleConfirmarPedido}
-            variant="contained"
-            color="success"
-            startIcon={<CheckIcon />}
-          >
+          <Button onClick={handleConfirmarPedido} variant="contained">
             Finalizar Pedido
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Dialog do Número de Controle */}
-      <Dialog open={dialogControleOpen} onClose={() => setDialogControleOpen(false)}>
-        <DialogTitle>Número de Controle</DialogTitle>
-        <DialogContent>
-          <Typography gutterBottom>
-            Digite o número de controle para este item:
-          </Typography>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Número de Controle"
-            type="number"
-            fullWidth
-            value={numeroControle}
-            onChange={(e) => setNumeroControle(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogControleOpen(false)}>Cancelar</Button>
-          <Button
-            onClick={handleConfirmarNumeroControle}
-            variant="contained"
-            sx={{ 
-              backgroundColor: '#0a2842',
-              '&:hover': {
-                backgroundColor: '#0a2842e0'
-              }
-            }}
-          >
-            Confirmar
-          </Button>
-        </DialogActions>
-      </Dialog>
-
+      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={6000}
+        autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
-        <Alert severity={snackbar.severity} sx={{ width: '100%' }}>
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
           {snackbar.message}
         </Alert>
       </Snackbar>

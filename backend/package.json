@@ -5,7 +5,11 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "production": "NODE_ENV=production node src/server.js",
+    "setup-db": "psql -d pdv_banco -f src/database/schema.sql",
+    "build": "echo 'Backend não precisa de build'",
+    "test": "echo 'Testes não configurados ainda'"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -16,5 +20,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 } 

@@ -72,7 +72,7 @@ const Home = () => {
             }} 
           />
           <Typography variant="h2" component="h1" sx={{ color: '#0a2842' }}>
-            Bem-vindo ao XRBurguer
+            Bem-vindo ao XR
           </Typography>
         </Box>
         <Typography variant="h5" color="text.secondary">
