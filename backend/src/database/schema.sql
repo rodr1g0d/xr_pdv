@@ -1,3 +1,4 @@
+-- database: :memory:
 -- Criar extensão para UUID se necessário
 -- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 

@@ -317,12 +317,14 @@ const PDV = () => {
               ) : (
                 <Grid container spacing={2}>
                   {produtos.map((produto) => (
-                    <Grid item xs={12} sm={6} key={produto.id}>
+                    <Grid item xs={12} sm={6} md={4} lg={3} key={produto.id}>
                       <Card 
                         sx={{ 
                           cursor: 'pointer',
                           border: produtoSelecionado?.id === produto.id ? '2px solid #0a2842' : '1px solid #ddd',
-                          '&:hover': { boxShadow: 3 }
+                          '&:hover': { boxShadow: 3 },
+                          minHeight: { xs: 120, sm: 140, md: 150 },
+                          p: { xs: 1, sm: 1.5, md: 2 }
                         }}
                         onClick={() => handleSelecionarProduto(produto)}
                       >
@@ -332,7 +334,7 @@ const PDV = () => {
                             {produto.nome}
                           </Typography>
                           <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
-                            R$ {produto.preco?.toFixed(2)}
+                            R$ {typeof produto.preco === 'number' ? produto.preco.toFixed(2) : Number(produto.preco || 0).toFixed(2)}
                           </Typography>
                         </CardContent>
                       </Card>
