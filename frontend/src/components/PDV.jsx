@@ -334,7 +334,7 @@ const PDV = () => {
                             {produto.nome}
                           </Typography>
                           <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
-                            R$ {typeof produto.preco === 'number' ? produto.preco.toFixed(2) : Number(produto.preco || 0).toFixed(2)}
+                            R$ {Number.isFinite(Number(produto.preco)) ? Number(produto.preco).toFixed(2) : '0.00'}
                           </Typography>
                         </CardContent>
                       </Card>
